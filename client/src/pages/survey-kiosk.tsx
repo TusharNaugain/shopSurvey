@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { SurveyQuestion, SurveySession } from "@shared/schema";
-import { surveyStorage } from "@/lib/survey-storage";
+import { apiClient } from "@/lib/api-client";
 import WelcomeScreen from "@/components/welcome-screen";
 import SurveyScreen from "@/components/survey-screen";
 import CompletionScreen from "@/components/completion-screen";
@@ -10,39 +11,36 @@ type ScreenType = 'welcome' | 'survey' | 'completion';
 export default function SurveyKiosk() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('welcome');
   const [currentSession, setCurrentSession] = useState<SurveySession | null>(null);
-  const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [responses, setResponses] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    // Load questions on component mount
-    const loadedQuestions = surveyStorage.getQuestions();
-    setQuestions(loadedQuestions);
+  const { data: questions = [], isLoading } = useQuery<SurveyQuestion[]>({
+    queryKey: ['/api/questions'],
+  });
 
-    // Clear any existing session on mount
-    surveyStorage.clearCurrentSession();
-  }, []);
-
-  const startSurvey = () => {
-    const session = surveyStorage.createSession();
-    setCurrentSession(session);
-    setCurrentQuestionIndex(0);
-    setResponses({});
-    setCurrentScreen('survey');
+  const startSurvey = async () => {
+    try {
+      const session = await apiClient.createSession(questions.length);
+      setCurrentSession(session);
+      setCurrentQuestionIndex(0);
+      setResponses({});
+      setCurrentScreen('survey');
+    } catch (error) {
+      console.error('Failed to create session:', error);
+    }
   };
 
-  const saveResponse = (questionId: string, answer: string) => {
+  const saveResponse = async (questionId: string, answer: string) => {
     if (!currentSession) return;
 
     const newResponses = { ...responses, [questionId]: answer };
     setResponses(newResponses);
 
-    // Save to localStorage
-    surveyStorage.saveResponse({
-      sessionId: currentSession.id,
-      questionId,
-      answer
-    });
+    try {
+      await apiClient.saveResponse(currentSession.id, questionId, answer);
+    } catch (error) {
+      console.error('Failed to save response:', error);
+    }
   };
 
   const nextQuestion = () => {
@@ -63,10 +61,16 @@ export default function SurveyKiosk() {
     nextQuestion();
   };
 
-  const completeSurvey = () => {
+  const completeSurvey = async () => {
     if (currentSession) {
-      surveyStorage.completeSession(currentSession.id);
-      surveyStorage.clearCurrentSession();
+      try {
+        await apiClient.updateSession(currentSession.id, { 
+          completedAt: new Date(),
+          answeredQuestions: Object.keys(responses).length
+        });
+      } catch (error) {
+        console.error('Failed to complete session:', error);
+      }
     }
     setCurrentScreen('completion');
   };
@@ -79,6 +83,14 @@ export default function SurveyKiosk() {
   };
 
   const currentQuestion = questions[currentQuestionIndex];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-xl text-muted-foreground">Loading survey...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
