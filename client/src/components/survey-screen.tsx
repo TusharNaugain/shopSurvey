@@ -9,9 +9,9 @@ interface SurveyScreenProps {
   question: SurveyQuestion;
   questionNumber: number;
   totalQuestions: number;
-  currentAnswer: string;
+  currentAnswer: string | string[];
   canGoBack: boolean;
-  onAnswerChange: (answer: string) => void;
+  onAnswerChange: (answer: string | string[]) => void;
   onNext: () => void;
   onPrevious: () => void;
   onSkip: () => void;

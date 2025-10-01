@@ -30,7 +30,7 @@ export const apiClient = {
   },
 
   // Responses
-  async saveResponse(sessionId: string, questionId: string, answer: string): Promise<SurveyResponse> {
+  async saveResponse(sessionId: string, questionId: string, answer: string | string[] | null | undefined): Promise<SurveyResponse> {
     const responseData: InsertSurveyResponse = {
       sessionId,
       questionId,

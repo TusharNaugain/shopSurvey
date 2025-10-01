@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SurveyQuestion, SurveySession } from "@shared/schema";
 import { apiClient } from "@/lib/api-client";
+import { useDebounce } from "@/hooks/use-debounce";
 import WelcomeScreen from "@/components/welcome-screen";
 import SurveyScreen from "@/components/survey-screen";
 import CompletionScreen from "@/components/completion-screen";
@@ -12,7 +13,9 @@ export default function SurveyKiosk() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('welcome');
   const [currentSession, setCurrentSession] = useState<SurveySession | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [responses, setResponses] = useState<Record<string, string>>({});
+  const [responses, setResponses] = useState<Record<string, string | string[]>>({});
+  const [textInputValue, setTextInputValue] = useState('');
+  const debouncedTextInputValue = useDebounce(textInputValue, 500);
 
   const { data: questions = [], isLoading } = useQuery<SurveyQuestion[]>({
     queryKey: ['/api/questions'],
@@ -30,7 +33,7 @@ export default function SurveyKiosk() {
     }
   };
 
-  const saveResponse = async (questionId: string, answer: string) => {
+  const saveResponse = async (questionId: string, answer: string | string[]) => {
     if (!currentSession) return;
 
     const newResponses = { ...responses, [questionId]: answer };
@@ -42,6 +45,12 @@ export default function SurveyKiosk() {
       console.error('Failed to save response:', error);
     }
   };
+
+  useEffect(() => {
+    if (debouncedTextInputValue) {
+      saveResponse(questions[currentQuestionIndex].id, debouncedTextInputValue);
+    }
+  }, [debouncedTextInputValue]);
 
   const nextQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
@@ -108,7 +117,14 @@ export default function SurveyKiosk() {
           totalQuestions={questions.length}
           currentAnswer={responses[currentQuestion.id] || ''}
           canGoBack={currentQuestionIndex > 0}
-          onAnswerChange={(answer) => saveResponse(currentQuestion.id, answer)}
+          onAnswerChange={(answer) => {
+            if (currentQuestion.type === 'text') {
+              setTextInputValue(answer as string);
+            } else {
+              saveResponse(currentQuestion.id, answer);
+              setTimeout(nextQuestion, 500);
+            }
+          }}
           onNext={nextQuestion}
           onPrevious={previousQuestion}
           onSkip={skipQuestion}

@@ -1,5 +1,3 @@
-import { db } from "db";
-import { surveyQuestions, surveyResponses, surveySessions } from "@shared/schema";
 import type { 
   SurveyQuestion, 
   SurveyResponse, 
@@ -8,7 +6,7 @@ import type {
   InsertSurveyResponse,
   InsertSurveySession
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { getFirestore } from "firebase-admin/firestore";
 
 export interface IStorage {
   // Questions
@@ -33,72 +31,93 @@ export interface IStorage {
 export class DbStorage implements IStorage {
   // Questions
   async getQuestions(): Promise<SurveyQuestion[]> {
-    const questions = await db.select().from(surveyQuestions).orderBy(surveyQuestions.order);
-    return questions;
+    const db = getFirestore();
+    const snapshot = await db.collection("survey_questions").orderBy("order").get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SurveyQuestion, "id">) }));
   }
 
   async getQuestionById(id: string): Promise<SurveyQuestion | undefined> {
-    const [question] = await db.select().from(surveyQuestions).where(eq(surveyQuestions.id, id));
-    return question;
+    const db = getFirestore();
+    const doc = await db.collection("survey_questions").doc(id).get();
+    if (!doc.exists) return undefined;
+    return { id: doc.id, ...(doc.data() as Omit<SurveyQuestion, "id">) };
   }
 
   async createQuestion(question: InsertSurveyQuestion): Promise<SurveyQuestion> {
-    const id = `question_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const [created] = await db.insert(surveyQuestions).values({ ...question, id }).returning();
-    return created;
+    const db = getFirestore();
+    const ref = await db.collection("survey_questions").add(question as any);
+    const doc = await ref.get();
+    return { id: doc.id, ...(doc.data() as Omit<SurveyQuestion, "id">) };
   }
 
   async updateQuestion(id: string, question: Partial<InsertSurveyQuestion>): Promise<SurveyQuestion | undefined> {
-    const [updated] = await db.update(surveyQuestions)
-      .set(question)
-      .where(eq(surveyQuestions.id, id))
-      .returning();
-    return updated;
+    const db = getFirestore();
+    const ref = db.collection("survey_questions").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return undefined;
+    await ref.set(question, { merge: true });
+    const updated = await ref.get();
+    return { id: updated.id, ...(updated.data() as Omit<SurveyQuestion, "id">) };
   }
 
   async deleteQuestion(id: string): Promise<boolean> {
-    const result = await db.delete(surveyQuestions).where(eq(surveyQuestions.id, id));
-    return result.rowCount ? result.rowCount > 0 : false;
+    const db = getFirestore();
+    const ref = db.collection("survey_questions").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return false;
+    await ref.delete();
+    return true;
   }
 
   // Sessions
   async createSession(session: InsertSurveySession): Promise<SurveySession> {
-    const [created] = await db.insert(surveySessions).values(session).returning();
-    return created;
+    const db = getFirestore();
+    const ref = await db.collection("survey_sessions").add(session as any);
+    const doc = await ref.get();
+    return { id: doc.id, ...(doc.data() as Omit<SurveySession, "id">) };
   }
 
   async getSessionById(id: string): Promise<SurveySession | undefined> {
-    const [session] = await db.select().from(surveySessions).where(eq(surveySessions.id, id));
-    return session;
+    const db = getFirestore();
+    const doc = await db.collection("survey_sessions").doc(id).get();
+    if (!doc.exists) return undefined;
+    return { id: doc.id, ...(doc.data() as Omit<SurveySession, "id">) };
   }
 
   async getAllSessions(): Promise<SurveySession[]> {
-    const sessions = await db.select().from(surveySessions).orderBy(desc(surveySessions.startedAt));
-    return sessions;
+    const db = getFirestore();
+    const snapshot = await db.collection("survey_sessions").orderBy("startedAt", "desc").get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SurveySession, "id">) }));
   }
 
   async updateSession(id: string, updates: Partial<SurveySession>): Promise<SurveySession | undefined> {
-    const [updated] = await db.update(surveySessions)
-      .set(updates)
-      .where(eq(surveySessions.id, id))
-      .returning();
-    return updated;
+    const db = getFirestore();
+    const ref = db.collection("survey_sessions").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return undefined;
+    await ref.set(updates, { merge: true });
+    const updated = await ref.get();
+    return { id: updated.id, ...(updated.data() as Omit<SurveySession, "id">) };
   }
 
   // Responses
   async createResponse(response: InsertSurveyResponse): Promise<SurveyResponse> {
-    const [created] = await db.insert(surveyResponses).values(response).returning();
-    return created;
+    const db = getFirestore();
+    const ref = await db.collection("survey_responses").add({ ...response, createdAt: new Date() } as any);
+    const doc = await ref.get();
+    return { id: doc.id, ...(doc.data() as Omit<SurveyResponse, "id">) };
   }
 
   async getSessionResponses(sessionId: string): Promise<SurveyResponse[]> {
-    const responses = await db.select().from(surveyResponses).where(eq(surveyResponses.sessionId, sessionId));
-    return responses;
+    const db = getFirestore();
+    const snapshot = await db.collection("survey_responses").where("sessionId", "==", sessionId).get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SurveyResponse, "id">) }));
   }
 
   async getAllResponses(): Promise<SurveyResponse[]> {
-    const responses = await db.select().from(surveyResponses).orderBy(desc(surveyResponses.createdAt));
-    return responses;
+    const db = getFirestore();
+    const snapshot = await db.collection("survey_responses").orderBy("createdAt", "desc").get();
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SurveyResponse, "id">) }));
   }
 }
 

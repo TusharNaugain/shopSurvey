@@ -6,8 +6,8 @@ import { useState } from "react";
 
 interface QuestionRendererProps {
   question: SurveyQuestion;
-  currentAnswer: string;
-  onAnswerChange: (answer: string) => void;
+  currentAnswer: string | string[];
+  onAnswerChange: (answer: string | string[]) => void;
 }
 
 export default function QuestionRenderer({

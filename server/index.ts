@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -48,6 +49,60 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize Firebase Admin SDK
+  const { initializeApp, applicationDefault, cert } = await import("firebase-admin/app");
+  try {
+    if (!globalThis.__FIREBASE_INITIALIZED__) {
+      const firestoreProjectId = process.env.FIRESTORE_PROJECT_ID;
+      const firestoreClientEmail = process.env.FIRESTORE_CLIENT_EMAIL;
+      const firestorePrivateKey = process.env.FIRESTORE_PRIVATE_KEY;
+
+      if (firestoreProjectId && firestoreClientEmail && firestorePrivateKey) {
+        const privateKey = firestorePrivateKey.replace(/\\n/g, '\n');
+        const credential = {
+          projectId: firestoreProjectId,
+          clientEmail: firestoreClientEmail,
+          privateKey,
+        };
+        initializeApp({ credential: cert(credential), projectId: firestoreProjectId });
+      } else {
+        const jsonEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+        const b64Env = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
+        const pathEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+        const fallbackProjectId = process.env.FIREBASE_PROJECT_ID;
+
+        if (jsonEnv) {
+          const json = JSON.parse(jsonEnv);
+          const projectId = json.project_id || fallbackProjectId;
+          if (projectId && !process.env.GOOGLE_CLOUD_PROJECT) process.env.GOOGLE_CLOUD_PROJECT = projectId;
+          initializeApp({ credential: cert(json) as any, projectId });
+        } else if (b64Env) {
+          const decoded = Buffer.from(b64Env, "base64").toString("utf-8");
+          const json = JSON.parse(decoded);
+          const projectId = json.project_id || fallbackProjectId;
+          if (projectId && !process.env.GOOGLE_CLOUD_PROJECT) process.env.GOOGLE_CLOUD_PROJECT = projectId;
+          initializeApp({ credential: cert(json) as any, projectId });
+        } else if (pathEnv) {
+          const fs = await import("fs");
+          const raw = fs.readFileSync(pathEnv, "utf-8");
+          const json = JSON.parse(raw);
+          const projectId = json.project_id || fallbackProjectId;
+          if (projectId && !process.env.GOOGLE_CLOUD_PROJECT) process.env.GOOGLE_CLOUD_PROJECT = projectId;
+          initializeApp({ credential: cert(json) as any, projectId });
+        } else {
+          const projectId = fallbackProjectId;
+          if (projectId && !process.env.GOOGLE_CLOUD_PROJECT) process.env.GOOGLE_CLOUD_PROJECT = projectId;
+          initializeApp({ credential: applicationDefault(), projectId });
+        }
+      }
+      // @ts-ignore
+      globalThis.__FIREBASE_INITIALIZED__ = true;
+    }
+  } catch (e) {
+    console.error("Failed to initialize Firebase Admin SDK", e);
+    throw e;
+  }
+
   await seedDatabase();
   
   const server = await registerRoutes(app);
@@ -76,8 +131,7 @@ app.use((req, res, next) => {
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
     port,
-    host: "0.0.0.0",
-    reusePort: true,
+    host: "127.0.0.1",
   }, () => {
     log(`serving on port ${port}`);
   });
